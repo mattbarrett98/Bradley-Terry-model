@@ -1,0 +1,68 @@
+---
+title: "binomial bradley terry rankings"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+final_dataset <- read.csv("~/Downloads/final_dataset.csv", header=FALSE) #premier league data
+##17/18 season premier league: here we use the mutate function to convert team names to numbers 1:20 (alphabetically) to allow a simpler construction of the log likelihood function
+D<- final_dataset[6462:6841,1:6] %>%
+  mutate(V3.2 = case_when(V3=="Arsenal"~1, V3=="Bournemouth"~2, V3=="Brighton" ~3, V3=="Burnley"~4, V3=="Chelsea"~5, V3=="Crystal Palace"~6, V3=="Everton"~7, V3=="Huddersfield"~8, V3=="Liverpool"~9, V3=="Leicester"~10, V3=="Man City"~11, V3=="Man United"~12, V3=="Newcastle"~13, V3=="Southampton"~14, V3=="Stoke"~15, V3=="Swansea"~16, V3=="Tottenham"~17, V3=="Watford"~18, V3=="West Brom"~19, V3=="West Ham"~20), V4.2 = case_when(V4=="Arsenal"~1, V4=="Bournemouth"~2, V4=="Brighton" ~3, V4=="Burnley"~4, V4=="Chelsea"~5, V4=="Crystal Palace"~6, V4=="Everton"~7, V4=="Huddersfield"~8, V4=="Liverpool"~9, V4=="Leicester"~10, V4=="Man City"~11, V4=="Man United"~12, V4=="Newcastle"~13, V4=="Southampton"~14, V4=="Stoke"~15, V4=="Swansea"~16, V4=="Tottenham"~17, V4=="Watford"~18, V4=="West Brom"~19, V4=="West Ham"~20))
+#16/17 season:
+testingdata<- final_dataset[6082:6461,1:6] %>%
+  mutate(V3.2 = case_when(V3=="Arsenal"~1, V3=="Bournemouth"~2, V3=="Middlesbrough" ~3, V3=="Burnley"~4, V3=="Chelsea"~5, V3=="Crystal Palace"~6, V3=="Everton"~7, V3=="Hull"~8, V3=="Liverpool"~9, V3=="Leicester"~10, V3=="Man City"~11, V3=="Man United"~12, V3=="Sunderland"~13, V3=="Southampton"~14, V3=="Stoke"~15, V3=="Swansea"~16, V3=="Tottenham"~17, V3=="Watford"~18, V3=="West Brom"~19, V3=="West Ham"~20), V4.2 = case_when(V4=="Arsenal"~1, V4=="Bournemouth"~2, V4=="Middlesbrough" ~3, V4=="Burnley"~4, V4=="Chelsea"~5, V4=="Crystal Palace"~6, V4=="Everton"~7, V4=="Hull"~8, V4=="Liverpool"~9, V4=="Leicester"~10, V4=="Man City"~11, V4=="Man United"~12, V4=="Sunderland"~13, V4=="Southampton"~14, V4=="Stoke"~15, V4=="Swansea"~16, V4=="Tottenham"~17, V4=="Watford"~18, V4=="West Brom"~19, V4=="West Ham"~20))
+
+##Removing draws from data
+nd<- subset.data.frame(testingdata, testingdata[,5]>testingdata[,6] | testingdata[,5]<testingdata[,6])
+
+
+##Basic Bradley Terry model
+gg<- function(y) {
+  mm<- 0 
+for (i in 1:296) {
+  pp<- ifelse(nd[i,5]>nd[i,6], exp(y[nd[i,7]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])), exp(y[nd[i,8]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])) )
+  mm<- mm + log(pp)
+}
+  return(-mm)
+}
+bb<- optim( rep(-1,20), gg, method = "L-BFGS-B")$par
+explambdas<- log(exp(bb)/sum(exp(bb)))
+explambdas
+```
+
+```{r}
+##Incorporating the gradient (found analytically) to speed up convergence
+BTgrad<- function(y) {
+  BTgrad<- c(rep(0,20))
+  for (i in 1:296) {
+  gradpp<- c(rep(0,20))
+  gradpp[nd[i,7]]<-ifelse(nd[i,5]>nd[i,6], exp(y[nd[i,7]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])) - 1, exp(y[nd[i,7]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])))
+  gradpp[nd[i,8]]<- ifelse(nd[i,5]>nd[i,6], exp(y[nd[i,8]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])), exp(y[nd[i,8]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])) - 1)
+BTgrad<- BTgrad + gradpp
+  }
+  return(BTgrad)
+}
+
+gg2<- function(y) {
+  mm<- 0 
+for (i in 1:296) {
+  pp<- ifelse(nd[i,5]>nd[i,6], exp(y[nd[i,7]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])), exp(y[nd[i,8]])/(exp(y[nd[i,7]])+exp(y[nd[i,8]])) )
+  mm<- mm + log(pp)
+  
+}
+  return(-mm)
+}
+bb<- optim( rep(-1,20), gg2, method = "L-BFGS-B", gr=BTgrad)$par
+explambdas<- log(exp(bb)/sum(exp(bb)))
+explambdas
+##Optimisation is about 2x?? faster with gradient 
+```
+
+```{r}
+nn<-data.frame(bb,c("Arsenal","Bournemouth","Middlesborough","Burnley","Chelsea","Crystal Palace","Everton","Hull","Liverpool","Leicester","Man City","Man United","Sunderland","Southampton","Stoke","Swansea","Tottenham","Watford","West Brom","West Ham"))
+dtdt<- nn[order(-bb),]
+dtdt$True<- c("Chelsea","Tottenham","Man City","Liverpool","Arsenal","Man United","Everton","Southampton","Bournemouth","West Brom","West Ham","Leicester City","Stoke City","Crystal Palace", "Swansea","Burnley","Watford","Hull","Middlesborough","Sunderland")
+colnames(dtdt)<- c("Team Strength","Model Rankings", "True Rankings")
+```
+

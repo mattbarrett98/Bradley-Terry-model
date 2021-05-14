@@ -1,0 +1,92 @@
+```{r}
+##TESTING MODEL RANKINGS VS TRUE RANKINGS 16/17
+D<- testingdata
+
+##Construct gradient function to supply to optim, speed up convergence
+btdgrad<- function(x) {
+  btd<- rep(0,21)
+  for (i in 1:380) {
+    gradi<- rep(0,21)
+    if (D[i,5]>D[i,6]) {
+      gradi[D[i,7]]<- (exp(x[D[i,7]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 1
+      gradi[D[i,8]]<- (exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+      gradi[21]<- exp((x[D[i,7]]+x[D[i,8]])/2)/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+    }
+    else if (D[i,5]==D[i,6]) {
+      gradi[D[i,7]]<- (exp(x[D[i,7]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 0.5
+      gradi[D[i,8]]<-  (exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 0.5
+      gradi[21]<- exp((x[D[i,7]]+x[D[i,8]])/2)/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 1/x[21]
+    }
+    else {
+      gradi[D[i,7]]<- (exp(x[D[i,7]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+      gradi[D[i,8]]<- (exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 1
+      gradi[21]<- exp((x[D[i,7]]+x[D[i,8]])/2)/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+    }
+    btd<- btd + gradi
+  }
+  return(btd)
+}
+
+
+likelihood<- function(x) {
+  n<- 380
+LL<-0
+##for the first n games we check the result win/draw/lose and assign the appropriate probability under our model
+  for(i in 1:n) {
+
+    ## for a home win we assign this probability
+if (D[i,5]>D[i,6]) {
+p= exp(x[D[i,7]])/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]])))  
+}
+    ##for a draw we assign this probability
+    else if (D[i,5]==D[i,6]) {
+  p= x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]]))/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]])))
+} 
+    ##for an away win we assign this probability
+    else {
+  p= exp(x[D[i,8]])/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]])))
+    }
+    ##the log likelihood is the sum of the log probabilities corresponding to each game i=1:n
+    LL<- LL + log(p)
+    
+  }
+return(-LL)
+}
+opt<- optim( rep(1,21), likelihood, method = "L-BFGS-B")
+grstren<- opt$par
+a<- c(log(exp(grstren[1:20])/sum(exp(grstren[1:20]))),grstren[21])
+a
+##previously the code took ~33s to find the MLE, supplying the gradient (found analytically) sped up the process to only 3s (MLE's for both were identical)
+opt<- optim( rep(1,21), likelihood, method = "L-BFGS-B", gr=btdgrad)
+grstren<- opt$par
+a<- c(log(exp(grstren[1:20])/sum(exp(grstren[1:20]))),grstren[21])
+a
+
+order(-a[1:20])
+```
+
+```{r}
+D<- testingdata
+y[i,1]<- ifelse(D[i,5]>D[i,6], 1, 0)
+y[i,2]<- ifelse(D[i,5]==D[i,6], 1, 0)
+y[i,3]<- ifelse(D[i,6]>D[i,5], 1, 0)
+
+log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]
+  a<- y[1:380,1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:380,2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:380,3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+opt<- optim( rep(1,21), log.lik, method = "L-BFGS-B", hessian=TRUE)
+grstren<- opt$par
+a<- c(log(exp(grstren[1:20])/sum(exp(grstren[1:20]))),grstren[21])
+
+```
+
+
+
+
+
+
