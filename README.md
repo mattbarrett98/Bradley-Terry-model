@@ -1,5 +1,5 @@
 - 👋 Hi, I’m @mattbarrett98
-- 🌱 I’m currently studying mathematics at the University of Bristol 
+- 🌱 Masters project on the Bradley-Terry model 
 
 <!---
 mattbarrett98/mattbarrett98 is a ✨ special ✨ repository because its `README.md` (this file) appears on your GitHub profile.
