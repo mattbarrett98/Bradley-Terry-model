@@ -1,0 +1,134 @@
+---
+title: "timeweighting 1"
+output: html_document
+---
+
+```{r}
+Dat<- testingdata
+
+weight1<- function(n) {
+  
+  y<- matrix(0,ncol=3,nrow=380)
+  for (i in 1:380) {
+  y[i,1]<- ifelse(Dat[i,5]>Dat[i,6], 1, 0)
+  y[i,2]<- ifelse(Dat[i,5]==Dat[i,6], 1, 0)
+  y[i,3]<- ifelse(Dat[i,6]>Dat[i,5], 1, 0)
+  }
+  dyn<- matrix(0, ncol=21, nrow=28)
+  for (k in 1:28) {
+    l<- max(1, 91 + 10*k - 10*n)
+    D<- Dat[l:(90+10*k), ]
+  log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]
+  a<- y[l:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[l:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[l:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dynamst<-optim( rep(1,21), log.lik, method = "L-BFGS-B")$par
+  dyn[k,]<- c((exp(dynamst[1:20])/sum(exp(dynamst[1:20]))),exp(dynamst[21]))
+  }
+  predic<- matrix(0, nrow=280, ncol=3) 
+  for (j in 1:28) {
+  e<- Dat[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  for (i in 1:10) {
+    mw[i,1]<- dyn[j,e[i,7]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,2]<- dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]])/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,3]<- dyn[j,e[i,8]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+  }
+  predic[(10*j-9):(10*j),]<- mw
+}
+  observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+  classif<- rep(0,280)
+  for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+  }
+  mean(classif) 
+  rps<- rankProbScore(predic, observ)
+  return(c(mean(classif), mean(rps))) 
+}
+
+weightresults<- matrix(0, ncol = 2,nrow = 37)
+for (i in 4:37) {
+  weightresults[i, ]<- weight1(i)
+}
+weightresults
+
+library(tidyverse)
+rp<- data.frame(x=seq(4,37), y=100*weightresults[4:37,1])
+rp$z<- ifelse( rp$y>53.93, "b", ifelse(rp$y<53.92, "w", "s"))
+
+ggplot(rp, aes(x=x, y=y, color=z)) +
+  geom_point(show.legend = FALSE) +
+  xlab(expression(t[0])) +
+  ylab("% of games predicted correctly")
+```
+
+```{r}
+Dat<- testingdata
+Dat[,9]<- rep(1:38, each=10)
+
+weight2<- function(xi) {
+
+  for (i in 1:380) {
+  y[i,1]<- ifelse(Dat[i,5]>Dat[i,6], 1, 0)
+  y[i,2]<- ifelse(Dat[i,5]==Dat[i,6], 1, 0)
+  y[i,3]<- ifelse(Dat[i,6]>Dat[i,5], 1, 0)
+  }
+  dyn<- matrix(0, ncol=21, nrow=28)
+  for (k in 1:28) {
+    D<- Dat[1:(90+10*k), ]
+    t<- k+9-D[,9] 
+  log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]
+  a<- exp(-xi*t)*y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- exp(-xi*t)*y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- exp(-xi*t)*y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dynamst<-optim( rep(1,21), log.lik, method = "L-BFGS-B")$par
+  dyn[k,]<- c((exp(dynamst[1:20])/sum(exp(dynamst[1:20]))),exp(dynamst[21]))
+  }
+  predic<- matrix(0, nrow=280, ncol=3) 
+  for (j in 1:28) {
+  e<- Dat[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  for (i in 1:10) {
+    mw[i,1]<- dyn[j,e[i,7]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,2]<- dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]])/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,3]<- dyn[j,e[i,8]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+  }
+  predic[(10*j-9):(10*j),]<- mw
+}
+  observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+  classif<- rep(0,280)
+  for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+  }
+  mean(classif) 
+  rps<- rankProbScore(predic, observ)
+  return(c(mean(classif), mean(rps))) 
+}
+
+expresults<- matrix(0, ncol=2, nrow=36)
+for (i in 1:36) {
+  expresults[i,]<- weight2(0.002*(i-1))
+}
+expresults
+
+library(tidyverse)
+rp<- data.frame(x=seq(0,0.07,0.002), y=100*expresults[,1])
+rp$z<- ifelse( rp$y>53.93, "b", ifelse(rp$y<53.92, "w", "s"))
+
+ggplot(rp, aes(x=x, y=y, color=z)) +
+  geom_point(show.legend = FALSE) +
+  xlab("w") +
+  ylab("% of games predicted correctly")
+```
+
+
