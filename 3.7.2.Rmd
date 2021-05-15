@@ -1,0 +1,100 @@
+---
+title: "3.4 dynamic"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+
+
+Dat<- testingdata
+
+for (i in 1:380) {
+  y[i,1]<- ifelse(Dat[i,5]>Dat[i,6], 1, 0)
+  y[i,2]<- ifelse(Dat[i,5]==Dat[i,6], 1, 0)
+  y[i,3]<- ifelse(Dat[i,6]>Dat[i,5], 1, 0)
+}
+dyn<- matrix(0, ncol=21, nrow=28)
+for (k in 1:28) {
+  D<- Dat[1:(90+10*k), ]
+  log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dynamst<-optim( rep(1,21), log.lik, method = "L-BFGS-B")$par
+  dyn[k,]<- c((exp(dynamst[1:20])/sum(exp(dynamst[1:20]))),exp(dynamst[21]))
+}
+
+```
+
+```{r}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- Dat[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  for (i in 1:10) {
+    mw[i,1]<- dyn[j,e[i,7]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,2]<- dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]])/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,3]<- dyn[j,e[i,8]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+  }
+  predic[(10*j-9):(10*j),]<- mw
+}
+e<- Dat[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+```
+
+```{r}
+##classification accuracy
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+
+##confusion tables
+cf<- rep(0,9)
+for (i in 1:280) {
+  cf[1]<- cf[1] + ifelse(which.max(predic[i,])==1 & observ[i,1]==1, 1, 0)
+  cf[2]<- cf[2] + ifelse(which.max(predic[i,])==1 & observ[i,2]==1, 1, 0)
+  cf[3]<- cf[3] + ifelse(which.max(predic[i,])==1 & observ[i,3]==1, 1, 0)
+  cf[4]<- cf[4] + ifelse(which.max(predic[i,])==2 & observ[i,1]==1, 1, 0)
+  cf[5]<- cf[5] + ifelse(which.max(predic[i,])==2 & observ[i,2]==1, 1, 0)
+  cf[6]<- cf[6] + ifelse(which.max(predic[i,])==2 & observ[i,3]==1, 1, 0)
+  cf[7]<- cf[7] + ifelse(which.max(predic[i,])==3 & observ[i,1]==1, 1, 0)
+  cf[8]<- cf[8] + ifelse(which.max(predic[i,])==3 & observ[i,2]==1, 1, 0)
+  cf[9]<- cf[9] + ifelse(which.max(predic[i,])==3 & observ[i,3]==1, 1, 0)
+}
+cf
+
+#rank probability score
+rankProbScore <- function(predictions, observed){
+  npred <- nrow(predictions)
+   
+  rps <- numeric(npred)
+   
+  for (rr in 1:npred){
+    cumulative <- 0
+    for (i in 1:3){
+      cumulative <- cumulative + (sum(predictions[rr,1:i]) - sum(observed[rr, 1:i]))^2
+    }
+    rps[rr] <- (1/(3-1))*cumulative
+  }
+  return((rps))   
+}
+rps<- rankProbScore(predic, observ)
+mean(rps)    #average rps of all attempted predictions
+```
+
+

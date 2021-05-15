@@ -1,0 +1,143 @@
+---
+title: "3.4 static predictions"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+D<- testingdata
+
+btdgrad<- function(x) {
+  btd<- rep(0,21)
+  for (i in 1:100) {
+    gradi<- rep(0,21)
+    if (D[i,5]>D[i,6]) {
+      gradi[D[i,7]]<- (exp(x[D[i,7]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 1
+      gradi[D[i,8]]<- (exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+      gradi[21]<- exp((x[D[i,7]]+x[D[i,8]])/2)/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+    }
+    else if (D[i,5]==D[i,6]) {
+      gradi[D[i,7]]<- (exp(x[D[i,7]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 0.5
+      gradi[D[i,8]]<-  (exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 0.5
+      gradi[21]<- exp((x[D[i,7]]+x[D[i,8]])/2)/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 1/x[21]
+    }
+    else {
+      gradi[D[i,7]]<- (exp(x[D[i,7]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+      gradi[D[i,8]]<- (exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)/2)/( exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2)) - 1
+      gradi[21]<- exp((x[D[i,7]]+x[D[i,8]])/2)/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*exp((x[D[i,7]]+x[D[i,8]])/2))
+    }
+    btd<- btd + gradi
+  }
+  return(btd)
+}
+
+
+likelihood<- function(x) {
+  n<- 100
+LL<-0
+  for(i in 1:n) {
+    if (D[i,5]>D[i,6]) {
+    p= exp(x[D[i,7]])/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]])))  
+}
+    else if (D[i,5]==D[i,6]) {
+  p= x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]]))/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]])))
+} 
+    else {
+  p= exp(x[D[i,8]])/(exp(x[D[i,7]])+exp(x[D[i,8]])+x[21]*sqrt(exp(x[D[i,7]])*exp(x[D[i,8]])))
+    }
+    LL<- LL + log(p)
+  }
+return(-LL)
+}
+
+statst<-optim( rep(1,21), likelihood, method = "L-BFGS-B", gr=btdgrad)$par
+a<- c((exp(statst[1:20])/sum(exp(statst[1:20]))),statst[21])
+a
+#OBTAIN MLEs
+```
+
+```{r}
+e<- D[101:380,]
+home.prob<- rep(0,280)
+draw.prob<- rep(0,280)
+away.prob<- rep(0,280)
+home<- rep(0,280)
+draw<- rep(0,280)
+away<- rep(0,280)
+for (i in 1:280) {
+  home.prob[i]<- a[e[i,7]]/(a[e[i,7]]+a[e[i,8]]+a[21]*sqrt(a[e[i,7]]*a[e[i,8]]))
+  draw.prob[i]<- a[21]*sqrt(a[e[i,7]]*a[e[i,8]])/(a[e[i,7]]+a[e[i,8]]+a[21]*sqrt(a[e[i,7]]*a[e[i,8]]))
+  away.prob[i]<- a[e[i,8]]/(a[e[i,7]]+a[e[i,8]]+a[21]*sqrt(a[e[i,7]]*a[e[i,8]]))
+  home[i]<- ifelse(e[i,5]>e[i,6], 1, 0)
+  draw[i]<- ifelse(e[i,5]==e[i,6], 1, 0)
+  away[i]<- ifelse(e[i,5]<e[i,6], 1, 0)
+}
+
+e[,7]<- home.prob
+e[,8]<- draw.prob
+e[,9]<- away.prob
+e[,10]<- home
+e[,11]<- draw
+e[,12]<- away
+```
+
+
+```{r}
+##classification accuracy
+predic<- matrix(c(home.prob, draw.prob, away.prob), ncol = 3)
+observ<- matrix(c(home, draw, away), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+rowSums(matrix(classif, byrow=TRUE, nrow=28))
+sum(classif)
+mean(classif) # % successfully predicted
+
+##what is the baseline classification i.e. if you always pick home win:
+count<- 0
+for (i in 101:380){
+  if (D[i,5]>D[i,6]) {
+    count<- count + 1
+  }
+}
+count/280  # % of home wins in the games we tried to predict
+```
+```{r}
+##confusion table
+cf<- rep(0,9)
+for (i in 1:280) {
+  cf[1]<- cf[1] + ifelse(which.max(predic[i,])==1 & observ[i,1]==1, 1, 0)
+  cf[2]<- cf[2] + ifelse(which.max(predic[i,])==1 & observ[i,2]==1, 1, 0)
+  cf[3]<- cf[3] + ifelse(which.max(predic[i,])==1 & observ[i,3]==1, 1, 0)
+  cf[4]<- cf[4] + ifelse(which.max(predic[i,])==2 & observ[i,1]==1, 1, 0)
+  cf[5]<- cf[5] + ifelse(which.max(predic[i,])==2 & observ[i,2]==1, 1, 0)
+  cf[6]<- cf[6] + ifelse(which.max(predic[i,])==2 & observ[i,3]==1, 1, 0)
+  cf[7]<- cf[7] + ifelse(which.max(predic[i,])==3 & observ[i,1]==1, 1, 0)
+  cf[8]<- cf[8] + ifelse(which.max(predic[i,])==3 & observ[i,2]==1, 1, 0)
+  cf[9]<- cf[9] + ifelse(which.max(predic[i,])==3 & observ[i,3]==1, 1, 0)
+}
+cf
+```
+```{r}
+#rank probability score
+rankProbScore <- function(predictions, observed){
+  npred <- nrow(predictions)
+   
+  rps <- numeric(npred)
+   
+  for (rr in 1:npred){
+    cumulative <- 0
+    for (i in 1:3){
+      cumulative <- cumulative + (sum(predictions[rr,1:i]) - sum(observed[rr, 1:i]))^2
+    }
+    rps[rr] <- (1/(3-1))*cumulative
+  }
+  return((rps))   
+}
+rps<- rankProbScore(predic, observ)
+rps[1:15]
+mean(rps)    #average rps of all attempted predictions
+
+```
+
