@@ -1,0 +1,88 @@
+---
+title: "simulatedata"
+output: html_document
+---
+
+```{r}
+set.seed(9)
+rando<- c(runif(20,0,1.5), runif(1,1,1.5))
+sim.par<- c( rando[1:20]/sum(rando[1:20]), rando[21] ) #randomly create true parameters
+
+sim.data<- cbind(D[,2:4],D[,7:8])   #simulate season results based off true parameters
+pis<- sim.par[sim.data[,4]]
+pjs<- sim.par[sim.data[,5]]
+sim.data[,6]<- pis/(pis + pjs + sim.par[21]*sqrt(pis*pjs)) #cumulative probabilites
+sim.data[,7]<- sim.data[,6] + (sim.par[21]*sqrt(pis*pjs))/(pis + pjs + sim.par[21]*sqrt(pis*pjs)) 
+sim.data[,8]<- sim.data[,7] + pjs/(pis + pjs + sim.par[21]*sqrt(pis*pjs))
+
+it<- runif(380)
+sim.data[,9]<- ifelse(it<sim.data[,6],1,0)    #inverse transform method
+sim.data[,10]<- ifelse(sim.data[,6]<it & it<sim.data[,7],1,0)
+sim.data[,11]<- ifelse(it>sim.data[,7],1,0)
+
+log.lik<- function(x) {
+  z<- x[sim.data[,5]]-x[sim.data[,4]]
+  a<- sim.data[,9]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- sim.data[,10]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- sim.data[,11]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+grstren<- optim( rep(-1,21), log.lik, method = "L-BFGS-B")$par
+est<- c((exp(grstren[1:20])/sum(exp(grstren[1:20]))),exp(grstren[21]))
+mse<- mean((est-sim.par)^2)
+cbind(sim.par,est)
+mse
+```
+
+
+
+```{r}
+set.seed(17)
+rando<- c(runif(20,0,1.5), runif(1,1,1.5))
+sim.par<- c( rando[1:20]/sum(rando[1:20]), rando[21] ) #randomly create true parameters
+
+concatD<- rbind(D,D)
+
+simu<- function(n) {
+sim.data<- cbind(concatD[1:n,2:4],concatD[1:n,7:8])   #simulate season results based off true parameters
+pis<- sim.par[sim.data[,4]]
+pjs<- sim.par[sim.data[,5]]
+sim.data[,6]<- pis/(pis + pjs + sim.par[21]*sqrt(pis*pjs)) #cumulative probabilites
+sim.data[,7]<- sim.data[,6] + (sim.par[21]*sqrt(pis*pjs))/(pis + pjs + sim.par[21]*sqrt(pis*pjs)) 
+sim.data[,8]<- sim.data[,7] + pjs/(pis + pjs + sim.par[21]*sqrt(pis*pjs))
+
+it<- runif(n)
+sim.data[,9]<- ifelse(it<sim.data[,6],1,0)    #inverse transform method
+sim.data[,10]<- ifelse(sim.data[,6]<it & it<sim.data[,7],1,0)
+sim.data[,11]<- ifelse(it>sim.data[,7],1,0)
+
+log.lik<- function(x) {
+  z<- x[sim.data[,5]]-x[sim.data[,4]]
+  a<- sim.data[,9]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- sim.data[,10]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- sim.data[,11]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+grstren<- optim( rep(-1,21), log.lik, method = "L-BFGS-B")$par
+est<- c((exp(grstren[1:20])/sum(exp(grstren[1:20]))),exp(grstren[21]))
+mse<- mean((est-sim.par)^2)
+return(mse)
+}
+nsim<- seq(50,600,25)
+points<- rep(0,length(nsim))
+for (i in 1:length(nsim)) {
+  points[i]<- simu(50+(i-1)*25)
+}
+
+pd<- data.frame(nsim=nsim, points=points)
+
+ggplot(data=pd, aes(x=nsim, y=points) ) +
+  geom_line(color="darkblue") +
+  geom_point(shape=21, color="black", fill="black", size=2) +
+  ylab("Mean squared error") +
+  xlab("Sample size")
+```
+
+

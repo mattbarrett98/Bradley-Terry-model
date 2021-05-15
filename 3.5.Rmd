@@ -1,0 +1,191 @@
+---
+title: "errors"
+output: html_document
+---
+
+```{r}
+##errors based off of the asymptotic distribution of MLE
+D1<- subset.data.frame(D, D[,7]!=1 & D[,8]!=1)
+D2<- subset.data.frame(D, D[,7]==1)
+D3<- subset.data.frame(D, D[,8]==1)
+
+y1<- matrix(0,nrow=342,ncol=3)
+y2<- matrix(0,nrow=19, ncol=3)
+y3<- matrix(0,nrow=19, ncol=3)
+y1[,1]<- ifelse(D1[,5]>D1[,6], 1, 0)
+y1[,2]<- ifelse(D1[,5]==D1[,6], 1, 0)
+y1[,3]<- ifelse(D1[,6]>D1[,5], 1, 0)
+y2[,1]<- ifelse(D2[,5]>D2[,6], 1, 0)
+y2[,2]<- ifelse(D2[,5]==D2[,6], 1, 0)
+y2[,3]<- ifelse(D2[,6]>D2[,5], 1, 0)
+y3[,1]<- ifelse(D3[,5]>D3[,6], 1, 0)
+y3[,2]<- ifelse(D3[,5]==D3[,6], 1, 0)
+y3[,3]<- ifelse(D3[,6]>D3[,5], 1, 0)
+lambda1<- -2.5358
+
+log.lik<- function(x) {
+  z<- x[D1[,8]-1]-x[D1[,7]-1]
+  a<- y1[,1]*log(1/(1+exp(z)+x[20]*exp(z/2)))
+  b<- y1[,2]*log(x[20]/(x[20]+exp(z/2)+exp(-z/2)))
+  c<- y1[,3]*log(1/(1+exp(-z)+x[20]*exp(-z/2)))
+  u<- x[D2[,8]-1]-lambda1
+  d<- y2[,1]*log(1/(1+exp(u)+x[20]*exp(u/2)))
+  e<- y2[,2]*log(x[20]/(x[20]+exp(u/2)+exp(-u/2)))
+  f<- y2[,3]*log(1/(1+exp(-u)+x[20]*exp(-u/2)))
+  v<- x[D3[,7]-1]-lambda1
+  g<- y3[,1]*log(1/(1+exp(-v)+x[20]*exp(-v/2)))
+  h<- y3[,2]*log(x[20]/(x[20]+exp(v/2)+exp(-v/2)))
+  i<- y3[,3]*log(1/(1+exp(v)+x[20]*exp(v/2)))
+  w<- sum(a)+sum(b)+sum(c)+sum(d)+sum(e)+sum(f)+sum(g)+sum(h)+sum(i)
+  return(-w)
+}
+opt<- optim( rep(1,20), log.lik, method = "L-BFGS-B", hessian=TRUE)
+mu<- opt$par
+H<- opt$hessian
+covar<- solve(H)
+sqrt(diag(covar))
+```
+
+```{r}
+#errors via bootstrapping
+library(progress)
+
+D<- testingdata
+n<- 100000
+bs.par<- matrix(0, nrow=n, ncol=21)
+pb<- progress_bar$new(total = n)
+for (i in 1:n) {
+  s<- sample(1:380, 380, replace = TRUE)
+  B<- D[s,]
+  y<- matrix(0,nrow=380,ncol=3)
+  y[,1]<- ifelse(B[,5]>B[,6], 1, 0)
+  y[,2]<- ifelse(B[,5]==B[,6], 1, 0)
+  y[,3]<- ifelse(B[,6]>B[,5], 1, 0)
+
+log.lik<- function(x) {
+  z<- x[B[,8]]-x[B[,7]]
+  a<- y[,1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[,2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[,3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+opt<- optim( rep(1,21), log.lik, method = "L-BFGS-B")
+grstren<- opt$par
+a<- c(log(exp(grstren[1:20])/sum(exp(grstren[1:20]))),exp(grstren[21]))
+bs.par[i,]<- a
+pb$tick()
+}
+bs.par
+plot(density(bs.par[,5]))
+plot(density(bs.par[,10]))
+plot(density(bs.par[,21]))
+apply(bs.par, 2, sd)          
+
+```
+```{r}
+library(MASS)
+library(ggplot2)
+library(hrbrthemes)
+asymptot<- mvrnorm(1000000, mu, covar)
+
+p1<- data.frame(val=asymptot[,20], group="Asymptotic")
+p2<- data.frame(val=bs.par[,21], group="Bootstrap")
+gp5<- rbind(p1,p2)
+
+ggplot(data=gp5, aes(x=val, group=factor(group), fill=factor(group))) +
+  geom_density(adjust=1, alpha=0.5) +
+  labs(fill='Method', x=expression(nu)) +
+  scale_fill_manual(values=c("darkgoldenrod1", "blueviolet"))
+
+p1<- data.frame(val=asymptot[,8], group="Asymptotic")
+p2<- data.frame(val=bs.par[,9], group="Bootstrap")
+gp5<- rbind(p1,p2)
+
+ggplot(data=gp5, aes(x=val, group=factor(group), fill=factor(group))) +
+  geom_density(adjust=1, alpha=0.5) +
+  labs(fill='Method', x=expression(lambda[9])) +
+  scale_fill_manual(values=c("darkgoldenrod1", "blueviolet")) +
+  xlim(c(-5,0))
+
+p1<- data.frame(val=asymptot[,1], group="Asymptotic")
+p2<- data.frame(val=bs.par[,2], group="Bootstrap")
+gp5<- rbind(p1,p2)
+
+ggplot(data=gp5, aes(x=val, group=factor(group), fill=factor(group))) +
+  geom_density(adjust=1, alpha=0.5) +
+  labs(fill='Method', x=expression(lambda[2])) +
+  scale_fill_manual(values=c("darkgoldenrod1", "blueviolet")) +
+  xlim(c(-7,-1))
+```
+
+
+
+
+```{r}
+##TEST bootstrapping with alternative mle where we fix arsenals strength
+library(progress)
+
+D<- testingdata
+lambda1<- -2.5358
+n<- 1000
+bst<- matrix(0, nrow=n, ncol=20)
+pb<- progress_bar$new(total = n)
+for (i in 1:n) {
+  s<- sample(1:380, 380, replace = TRUE)
+  B<- D[s,]
+  B1<- subset.data.frame(B, B[,7]!=1 & B[,8]!=1)
+  B2<- subset.data.frame(B, B[,7]==1)
+  B3<- subset.data.frame(B, B[,8]==1)
+
+  y1<- matrix(0,nrow=nrow(B1),ncol=3)
+  y2<- matrix(0,nrow=nrow(B2), ncol=3)
+  y3<- matrix(0,nrow=nrow(B3), ncol=3)
+  y1[,1]<- ifelse(B1[,5]>B1[,6], 1, 0)
+  y1[,2]<- ifelse(B1[,5]==B1[,6], 1, 0)
+  y1[,3]<- ifelse(B1[,6]>B1[,5], 1, 0)
+  y2[,1]<- ifelse(B2[,5]>B2[,6], 1, 0)
+  y2[,2]<- ifelse(B2[,5]==B2[,6], 1, 0)
+  y2[,3]<- ifelse(B2[,6]>B2[,5], 1, 0)
+  y3[,1]<- ifelse(B3[,5]>B3[,6], 1, 0)
+  y3[,2]<- ifelse(B3[,5]==B3[,6], 1, 0)
+  y3[,3]<- ifelse(B3[,6]>B3[,5], 1, 0)
+  log.lik<- function(x) {
+  z<- x[B1[,8]-1]-x[B1[,7]-1]
+  a<- y1[,1]*log(1/(1+exp(z)+exp(x[20])*exp(z/2)))
+  b<- y1[,2]*log(exp(x[20])/(exp(x[20])+exp(z/2)+exp(-z/2)))
+  c<- y1[,3]*log(1/(1+exp(-z)+exp(x[20])*exp(-z/2)))
+  u<- x[B2[,8]-1]-lambda1
+  d<- y2[,1]*log(1/(1+exp(u)+exp(x[20])*exp(u/2)))
+  e<- y2[,2]*log(exp(x[20])/(exp(x[20])+exp(u/2)+exp(-u/2)))
+  f<- y2[,3]*log(1/(1+exp(-u)+exp(x[20])*exp(-u/2)))
+  v<- x[B3[,7]-1]-lambda1
+  g<- y3[,1]*log(1/(1+exp(-v)+exp(x[20])*exp(-v/2)))
+  h<- y3[,2]*log(exp(x[20])/(exp(x[20])+exp(v/2)+exp(-v/2)))
+  i<- y3[,3]*log(1/(1+exp(v)+exp(x[20])*exp(v/2)))
+  w<- sum(a)+sum(b)+sum(c)+sum(d)+sum(e)+sum(f)+sum(g)+sum(h)+sum(i)
+  return(-w)
+}
+
+opt<- optim( rep(1,20), log.lik, method = "L-BFGS-B")
+grstren<- opt$par
+a<- c(grstren[1:19], exp(grstren[20]))
+bst[i,]<- a
+pb$tick()
+}
+plot(density(bs.par[,5]))
+plot(density(bs.par[,10]))
+plot(density(bs.par[,20]))
+apply(bst, 2, sd) 
+
+p1<- data.frame(val=asymptot[,1], group="Asymptotic")
+p2<- data.frame(val=bst[,1], group="Bootstrap")
+gp5<- rbind(p1,p2)
+
+ggplot(data=gp5, aes(x=val, group=factor(group), fill=factor(group))) +
+  geom_density(adjust=1, alpha=0.5) +
+  labs(fill='Method', x=expression(lambda[2])) +
+  scale_fill_manual(values=c("darkgoldenrod1", "blueviolet")) +
+  xlim(c(-7,0))
+```
+
