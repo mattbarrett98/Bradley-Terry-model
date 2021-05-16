@@ -1,0 +1,143 @@
+---
+title: "hypothesistests"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+testingdata<- final_dataset[6082:6461,1:6] %>%
+  mutate(V3.2 = case_when(V3=="Arsenal"~1, V3=="Bournemouth"~2, V3=="Middlesbrough" ~3, V3=="Burnley"~4, V3=="Chelsea"~5, V3=="Crystal Palace"~6, V3=="Everton"~7, V3=="Hull"~8, V3=="Liverpool"~9, V3=="Leicester"~10, V3=="Man City"~11, V3=="Man United"~12, V3=="Sunderland"~13, V3=="Southampton"~14, V3=="Stoke"~15, V3=="Swansea"~16, V3=="Tottenham"~17, V3=="Watford"~18, V3=="West Brom"~19, V3=="West Ham"~20), V4.2 = case_when(V4=="Arsenal"~1, V4=="Bournemouth"~2, V4=="Middlesbrough" ~3, V4=="Burnley"~4, V4=="Chelsea"~5, V4=="Crystal Palace"~6, V4=="Everton"~7, V4=="Hull"~8, V4=="Liverpool"~9, V4=="Leicester"~10, V4=="Man City"~11, V4=="Man United"~12, V4=="Sunderland"~13, V4=="Southampton"~14, V4=="Stoke"~15, V4=="Swansea"~16, V4=="Tottenham"~17, V4=="Watford"~18, V4=="West Brom"~19, V4=="West Ham"~20))
+
+home.games<-c(rep(0,20))
+home.wins<-c(rep(0,20))
+home.draws<-c(rep(0,20))
+home.losses<-c(rep(0,20))
+away.games<- rep(0,20)
+away.wins<- rep(0,20)
+away.draws<- rep(0,20)
+away.losses<-rep(0,20)
+  
+for (i in 1:380) {
+
+    home.games[TD[i,7]]<- home.games[TD[i,7]] + 1
+    
+    if (TD[i,5]>TD[i,6]) {
+    home.wins[TD[i,7]]<- home.wins[TD[i,7]] + 1
+    }
+    else if (TD[i,5]==TD[i,6]) {
+      home.draws[TD[i,7]]<- home.draws[TD[i,7]] + 1
+    }
+    else {home.losses[TD[i,7]]<- home.losses[TD[i,7]] + 1}
+    away.games[TD[i,8]]<- away.games[TD[i,8]] + 1
+    
+    if (TD[i,5]>TD[i,6]) {
+    away.losses[TD[i,8]]<- away.losses[TD[i,8]] + 1
+    }
+    else if (TD[i,5]==TD[i,6]) {
+      away.draws[TD[i,8]]<- away.draws[TD[i,8]] + 1
+    }
+    else {away.wins[TD[i,8]]<- away.wins[TD[i,8]] + 1}}
+
+team<- c(rep("Arsenal Home",3), rep("Arsenal Away",3), rep("Bournemouth Home",3), rep("Bournemouth Away",3),rep("Middlesbrough Home",3), rep("Middlesbrough Away",3),  rep("Burnley Home",3), rep("Burnley Away",3), rep("Chelsea Home",3), rep("Chelsea Away",3), rep("Crystal Palace Home",3), rep("Crystal Palace Away",3), rep("Everton Home",3), rep("Everton Away",3), rep("Hull Home",3), rep("Hull Away",3), rep("Liverpool Home",3), rep("Liverpool Away",3),rep("Leicester Home",3), rep("Leicester Away",3), rep("Man City Home",3), rep("Man City Away",3), rep("Man United Home",3), rep("Man United Away",3), rep("Sunderland Home",3), rep("Sunderland Away",3),rep("Southampton Home",3), rep("Southampton Away",3), rep("Stoke Home",3), rep("Stoke Away",3), rep("Swansea Home",3), rep("Swansea Away",3), rep("Tottenham Home",3), rep("Tottenham Away",3), rep("Watford Home",3), rep("Watford Away",3), rep("West Brom Home",3), rep("West Brom Away",3), rep("West Ham Home",3), rep("West Ham Away",3))
+outcome<- rep(c("Wins", "Draws", "Losses"), 40)
+value<- c(rbind(home.wins, home.draws, home.losses, away.wins, away.draws, away.losses))
+
+
+barplotdata<- data.frame(team[1:18], outcome[1:18], value[1:18]) 
+Results<- outcome[1:18]
+ggplot(barplotdata, aes(fill=Results, x=value[1:18], y=team[1:18])) +
+  geom_bar(position = position_dodge()  , stat = "identity") +
+  labs(title = "Home vs Away Performance 2016-2017", x="", y="Team")
+
+barplotdata<- data.frame(team[49:66], outcome[49:66], value[49:66]) 
+Results<- outcome[49:66]
+ggplot(barplotdata, aes(fill=Results, x=value[49:66], y=team[49:66])) +
+  geom_bar(position = position_dodge()  , stat = "identity") +
+  labs(title = "Home vs Away Performance 2016-2017", x="", y="Team")
+```
+
+```{r}
+##x1 is home wins samples, x2 is away wins samples
+x1<- home.wins
+x2<- away.wins
+
+
+df<- data.frame(Location=rep(c("Home", "Away"), each=20), Wins=c(x1,x2))
+means<- data.frame(Location=c("Home", "Away"), grp.mean=c(sum(x1)/20, sum(x2)/20))
+
+
+##PLOTTING THE DENSITIES- DONT LOOK NORMALLY DISTRIBUTED SO SOMETHING LIKE A PAIRED T TEST ISNT APPROPRIATE
+ggplot(df, aes(x=Wins, fill=Location, colour=Location)) +
+  geom_histogram(position = "identity", alpha=0.5) +
+  geom_vline(data=means, aes(xintercept=grp.mean, color=Location),linetype="dashed") +
+  geom_density(alpha=0.5) +
+  ylim(0, 0.2) + 
+  ylab("Density")
+
+
+```
+
+```{r}
+##WE ARE UNSURE OF THE DENSITIES OF THE ABOVE CURVES- WE PERFORM A PERMUTATION TEST WITH OUR POPULATION SAMPLES X1, X2
+
+test.stat<- mean(x1)-mean(x2)
+c<- 1000000
+##H0: THERE IS NO DIFFERENCE NUMBER OF WINS, HOME AND AWAY. SO UNDER THE NULL WE CAN POOL BOTH SAMPLES (BASICALLY IGNORING LABELS)
+pooled.sample<- c(x1,x2)
+permsamples<- matrix(0, nrow=40, ncol=c)
+
+##RANDOMLY PERMUTE POOLED SAMPLE C TIMES, AND CALCULATE THE TEST STATISTIC FOR EACH OF THESE PERMUTATIONS
+for (i in 1:c) {
+  permsamples[,i]<- sample(pooled.sample)
+}
+
+perm.test.stat<- rep(0,c)
+
+for (i in 1:c) {
+  perm.test.stat[i]<- mean(permsamples[1:20, i]) - mean(permsamples[21:40, i])
+}
+##COMPUTE THE P VALUE=NUMBER OF TEST STATISTICS GREATER THAN OBSERVED TEST STATISTIC/ C=TOTAL NUMBER OF TEST STATISTICS 
+mean(perm.test.stat >= test.stat)
+
+##WE DO A 'LARGE' NUMBER OF PERMUTATIONS AND OBTAIN AN 'ACCURATE' PLOT OF THE DENSITY OF THE TEST STATISTIC (UNDER H0)
+plot(density(perm.test.stat), 
+     xlab= "Mean(x1) - Mean(x2)" , 
+     main="Permutation Test Statistics", las=1)
+abline(v=test.stat, col="blue", lty="dotted")
+text(3.9,0.05, "T-obs", col="blue", cex=0.7)
+
+##"UNDER THE NULL HYPOTHESIS THAT THE LABELS H&A ARE EXCHANGEABLE, THERE IS A 0.14% CHANCE THAT WE OBTAN OUR RESULT (3.9) 
+##P VALUE ~ 0.0014- HENCE WE HAVE A LOT OF REASON TO BELIEVE THAT THE MEANS OF THE "HOME" AND "AWAY" DIFFER (WHICH SEEMS OBVIOUS FROM OUR ARRAY OF PLOTS ABOVE)
+dat<- data.frame(TS= perm.test.stat)
+ggplot() +
+  geom_density(data = dat, aes(x=TS)) +
+  xlab("T") +
+  geom_vline(xintercept=test.stat, linetype="dotted", color="red") +
+  annotate("text", x=3.1, y=0.2, label= expression(T[obs]*"=3.9"), color="red") +
+  theme_gray() +
+  ggtitle(expression("Distribution of the test statistic under H"[0]))
+
+```
+
+```{r}
+##team forms?
+form<- matrix(0, nrow=20, ncol=38)
+for (i in 1:20) {
+  a<- subset(TD, TD[,7]==i|TD[,8]==i)
+  for (j in 1:38) {
+    if (a[j,7]==i) {
+  form[i,j]<- ifelse(a[j,5]>a[j,6], 2, ifelse(a[j,5]==a[j,6], 1, 0))
+    }
+    else {form[i,j]<- ifelse(a[j,6]>a[j,5], 2, ifelse(a[j,5]==a[j,6], 1, 0))}
+  }
+}
+
+dat<- data.frame(Matchweek=seq(1:38), Result=form[6,])
+dat$word<- ifelse(dat$Result==2, "Win", ifelse(dat$Result==1, "Draw", "Loss"))
+ggplot(data=dat, aes(x=Matchweek, y=Result, color=word)) +
+  geom_point() +
+  theme(legend.title = element_blank())
+
+```
+
