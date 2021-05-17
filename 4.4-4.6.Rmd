@@ -1,0 +1,280 @@
+---
+title: "MwG"
+output: html_document
+---
+
+```{r}
+#METROPOLIS WITHIN GIBBS FOR DRAWS MODEL
+TD<- testingdata[1:380, ]
+y<- matrix(0, nrow=nrow(TD),ncol=3)
+for (i in 1:nrow(TD)) {
+  y[i,1]<- ifelse(TD[i,5]>TD[i,6], 1, 0)
+  y[i,2]<- ifelse(TD[i,5]==TD[i,6], 1, 0)
+  y[i,3]<- ifelse(TD[i,6]>TD[i,5], 1, 0)
+}
+log.lik<- function(x) {
+  z<- x[TD[,8]]-x[TD[,7]]
+  a<- y[,1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[,2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[,3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(w)
+}
+log.prior<-function(x) sum(dnorm(x, log=T))
+log.post<- function(x) log.prior(x)+log.lik(x)
+
+MwG<-function(x0,sigma1, sigma2, log.post, n){
+      d<-21
+      chain<-matrix(0,n,d)
+      ac.rate<-rep(0,d)
+      chain[1,]<-x0
+      lik.t<-log.post(chain[1,])
+      for(t in 2:n){
+        chain[t,]<-chain[t-1,]
+        for(k in 1:(d-1)){
+             x.prop<-rnorm(1, chain[t,k],sigma1)
+             chain[t,k]<-x.prop
+             lik.prop<-log.post(chain[t,])
+             if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[k]<-ac.rate[k]+1
+             }else{
+                chain[t,k]<-chain[t-1,k]
+             }
+        }
+        x.prop<- rnorm(1, chain[t,21], sigma2)
+        chain[t,21]<- x.prop
+        lik.prop<- log.post(chain[t,])
+        if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[21]<-ac.rate[21]+1
+             }else{
+                chain[t,21]<-chain[t-1,21]
+             }
+      }
+     return(list(X=chain, AR=ac.rate/n))
+}
+
+x0<-c(rep(0,21))
+n<-10000
+sigma1<-1      
+sigma2<- 0.3       
+sim<-MwG(x0, sigma1, sigma2, log.post, n)
+
+plot(1:n,sim$X[,7], type='l', xlab='t', ylab=expression(lambda[7]), main = expression(paste(sigma[1],"=1")))
+plot(1:n,sim$X[,21], type='l', xlab='t', ylab=expression(phi), main=expression(paste(sigma[2], "=0.3")))
+
+rho<- rep(0,21)
+for (i in 1:21) {
+  rho[i]<- cor(sim$X[-1,i],sim$X[-nrow(sim$X),i]) 
+}
+rho[c(7,21)]
+
+print(sim$AR)
+hist(sim$X[,5])
+hist(sim$X[,21])
+
+Xadj<- exp(sim$X)
+colMeans(Xadj)
+```
+
+```{r}
+##optimal acceptance rate?
+h.phi<- function(x) {
+   -2*x^2*pnorm(-x/2)
+}
+ph<- optimise(h.phi, c(0,10))$minimum
+ph
+
+library(ggplot2)
+dat<- data.frame(t=seq(0,8,0.01),h=apply(cbind(t),1, FUN = h.phi))
+ggplot(data.frame(x=c(0, 8)), aes(x)) + 
+  stat_function(fun=function(x) 2*x^2*pnorm(-x/2)) +
+  geom_vline(xintercept=ph, linetype="dotted", color="darkblue") +
+  annotate("text", x=3.1, y=0.2, label= expression(phi*"=2.38"), color="darkblue") +
+  xlab(expression(phi)) +
+  ylab(expression("h("*phi*")"))
+
+sigma<- 2.38121
+expfunc<- function(x,y) {
+  min(  dnorm(x),  dnorm(y) ) * dnorm(y, x, 2.38)
+}
+
+x<- seq(-3,3, 0.15)
+y<- x
+z<- matrix(0, nrow = length(x), ncol=length(y))
+for (i in 1:length(x)){
+  for (j in 1:length(y)) {
+    z[i,j]<-expfunc(x[i], y[j])
+  }
+}
+persp(x,y,z, theta = 20, phi=40, axes=TRUE, nticks = 1, ticktype = "detailed", col = "cyan", zlab = "")
+
+#enclose distribution in a box (maximum value is 0.06683783497). estimating the volume for -10<x,y<10 should be sufficient
+n<- 10000000
+r1<- matrix(runif(2*n,-10,10), ncol=2)
+r2<- runif(n, 0, 0.067)
+
+expfunc<- function(x) {
+  min(  dnorm(x[1]),  dnorm(x[2]) ) * dnorm(x[2], x[1], ph)
+}
+v<- apply(r1, 1, expfunc)
+mean(r2<v)*20^2*0.067
+2/pi * atan(2/ph)
+
+options(digits = 13)
+mean(r2<v)
+```
+
+```{r}
+#mwg static predictions
+log.lik<- function(x) {
+  z<- x[TD[1:100,8]]-x[TD[1:100,7]]
+  a<- y[1:100,1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:100,2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:100,3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(w)
+}
+log.prior<-function(x) sum(dnorm(x, log=T))
+log.post<- function(x) log.prior(x)+log.lik(x)
+
+x0<-c(rep(0,21))
+n<-7000
+sigma1<-1      
+sigma2<- 0.3       
+sim<-MwG(x0, sigma1, sigma2, log.post, n)
+
+Xadj<- exp(sim$X)
+a<- colMeans(Xadj)
+
+e<- TD[101:380,]
+home.prob<- rep(0,280)
+draw.prob<- rep(0,280)
+away.prob<- rep(0,280)
+home<- rep(0,280)
+draw<- rep(0,280)
+away<- rep(0,280)
+for (i in 1:280) {
+  home.prob[i]<- a[e[i,7]]/(a[e[i,7]]+a[e[i,8]]+a[21]*sqrt(a[e[i,7]]*a[e[i,8]]))
+  draw.prob[i]<- a[21]*sqrt(a[e[i,7]]*a[e[i,8]])/(a[e[i,7]]+a[e[i,8]]+a[21]*sqrt(a[e[i,7]]*a[e[i,8]]))
+  away.prob[i]<- a[e[i,8]]/(a[e[i,7]]+a[e[i,8]]+a[21]*sqrt(a[e[i,7]]*a[e[i,8]]))
+  home[i]<- ifelse(e[i,5]>e[i,6], 1, 0)
+  draw[i]<- ifelse(e[i,5]==e[i,6], 1, 0)
+  away[i]<- ifelse(e[i,5]<e[i,6], 1, 0)
+}
+
+e[,7]<- home.prob
+e[,8]<- draw.prob
+e[,9]<- away.prob
+e[,10]<- home
+e[,11]<- draw
+e[,12]<- away
+
+##classification accuracy
+predic<- matrix(c(home.prob, draw.prob, away.prob), ncol = 3)
+observ<- matrix(c(home, draw, away), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+rowSums(matrix(classif, byrow=TRUE, nrow=28))
+sum(classif)
+mean(classif) # % successfully predicted
+
+rps<- rankProbScore(predic, observ)
+mean(rps) 
+```
+
+```{r}
+#dynamic mwg predictions
+
+
+dyn<- matrix(0, ncol=21, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(w)
+  }
+  log.prior<-function(x) sum(dnorm(x, log=T))
+  log.post<- function(x) log.prior(x)+log.lik(x)
+  x0<-c(rep(0,21))
+  n<-7000
+  sigma1<-1      
+  sigma2<- 0.3       
+  sim<-MwG(x0, sigma1, sigma2, log.post, n)
+
+  Xadj<- exp(sim$X)
+  dyn[k,]<- colMeans(Xadj)
+}
+
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  for (i in 1:10) {
+    mw[i,1]<- dyn[j,e[i,7]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,2]<- dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]])/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+    mw[i,3]<- dyn[j,e[i,8]]/(dyn[j,e[i,7]]+dyn[j,e[i,8]]+dyn[j,21]*sqrt(dyn[j,e[i,7]]*dyn[j,e[i,8]]))
+  }
+  predic[(10*j-9):(10*j),]<- mw
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+##classification accuracy
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+rps<- rankProbScore(predic, observ)
+mean(rps) 
+```
+
+```{r}
+log.lik<- function(x) {
+  z<- x[sim.data[,5]]-x[sim.data[,4]]
+  a<- sim.data[,9]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- sim.data[,10]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- sim.data[,11]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(w)
+}
+log.prior<-function(x) sum(dnorm(x, log=T))
+log.post<- function(x) log.prior(x)+log.lik(x)
+
+x0<-c(rep(0,21))
+n<-10000
+sigma1<-1      
+sigma2<- 0.25       
+sim<-MwG(x0, sigma1, sigma2, log.post, n)
+
+print(sim$AR)
+plot(1:n,sim$X[,5], type='l', xlab='t', ylab='')
+plot(1:n,sim$X[,14], type='l', xlab='t', ylab='')
+plot(1:n,sim$X[,21], type='l', xlab='t', ylab='')
+
+Xadj<- exp(sim$X)
+colMeans(Xadj)
+
+sd(Xadj[,21])
+quantile(Xadj[,21], c(0.025, 0.975))
+
+mest<-c(colMeans(Xadj)[1:20]/sum(colMeans(Xadj)[1:20]), mean(Xadj[,21]))
+mean((mest-sim.par)^2)
+```
+
+

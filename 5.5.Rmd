@@ -1,0 +1,353 @@
+---
+title: "newmodel"
+output: html_document
+---
+
+```{r}
+##adding which number game is being played
+TD[,9]<- rep(0,380)
+TD[which(ifelse(TD[,7]==1, 1, 0)!=0),9]<- cumsum(ifelse(TD[,7]==1 | TD[,8]==1, 1, 0)!=0)[which(ifelse(TD[,7]==1, 1, 0)!=0)]
+
+TD[,9]<- rep(0,380)
+TD[,10]<- rep(0,380)
+for (i in 1:20) {
+  TD[which(ifelse(TD[,7]==i, 1, 0)!=0),9]<- cumsum(ifelse(TD[,7]==i | TD[,8]==i, 1, 0)!=0)[which(ifelse(TD[,7]==i, 1, 0)!=0)]
+  TD[which(ifelse(TD[,8]==i, 1, 0)!=0),10]<- cumsum(ifelse(TD[,7]==i | TD[,8]==i, 1, 0)!=0)[which(ifelse(TD[,8]==i, 1, 0)!=0)]
+}
+```
+
+
+```{r}
+#EXPLANATORY VARIABLES
+
+#home or away
+HA<- matrix(0, nrow=20, ncol=38)
+for (i in 1:20) {
+  s<- subset(TD, TD[,7]==i | TD[,8]==i)
+  HA[i, ]<- ifelse(s[,7]==i, 1, 0)
+}
+
+#form 
+FM<- matrix(0, nrow=20, ncol=38)
+FM[,1]<- 1
+for (i in 1:20) {
+  s<- subset(TD, TD[,7]==i | TD[,8]==i)
+  pts<- rep(0,37)
+  for (j in 1:37) {
+    pts[j]<- ifelse( (s[j,7]==i & s[j,5]>s[j,6]) | ( s[j,8]==i & s[j,6]>s[j,5]  ), 3, ifelse( s[j,5]==s[j,6], 1, 0 ))
+    FM[i,(j+1)]<- sum(pts[max(j-3, 0):(j)])/length(pts[max(j-3, 0):(j)])
+  }
+}
+
+#goals scored
+GS<- matrix(0, nrow=20, ncol=38)
+GS[,1]<- 1
+for (i in 1:20) {
+  s<- subset(TD, TD[,7]==i | TD[,8]==i)
+  sco<- as.numeric(ifelse( s[,7]==i, s[,5], s[,6]))
+  for (j in 2:38) {
+    GS[i,j]<- sum(sco[max(j-5, 0):(j-1)])/length(sco[max(j-5, 0):(j-1)])
+  }
+}
+
+#goals conceded
+C<- matrix(0, nrow=20, ncol=38)
+C[,1]<- 1
+for (i in 1:20) {
+  s<- subset(TD, TD[,7]==i | TD[,8]==i)
+  con<- as.numeric(ifelse( s[,7]==i, s[,6], s[,5]))
+  for (j in 2:38) {
+    C[i,j]<- sum(con[max(j-5, 0):(j-1)])/length(con[max(j-5, 0):(j-1)])
+  }
+}
+```
+
+```{r}
+#log likelihood with all 4 explanatory variables
+D<- TD[1:100, ]
+y<- matrix(0, nrow=380, ncol=3)
+for (i in 1:380) {
+  y[i,1]<- ifelse(TD[i,5]>TD[i,6], 1, 0)
+  y[i,2]<- ifelse(TD[i,5]==TD[i,6], 1, 0)
+  y[i,3]<- ifelse(TD[i,6]>TD[i,5], 1, 0)
+}
+log.lik<- function(x) {
+  beta<- c(x[1], x[2], x[3], x[4])
+  fj<- rbind( HA[ cbind(D[,8], D[,10]) ], FM[ cbind(D[,8], D[,10]) ], GS[ cbind(D[,8], D[,10]) ], C[ cbind(D[,8], D[,10]) ] )
+  fi<- rbind( HA[ cbind(D[,7], D[,9]) ], FM[ cbind(D[,7], D[,9]) ], GS[ cbind(D[,7], D[,9]) ], C[ cbind(D[,7], D[,9]) ] )
+  z<- c(beta%*%(fj - fi))
+  a<- y[1:100,1]*log(1/(1+exp(z)+exp(x[5])*exp(z/2)))
+  b<- y[1:100,2]*log(exp(x[5])/(exp(x[5])+exp(z/2)+exp(-z/2)))
+  c<- y[1:100,3]*log(1/(1+exp(-z)+exp(x[5])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+a<- optim( rep(0,5), log.lik, method = "BFGS")$par
+
+#static predictions
+e<- TD[101:380,]
+fj<- rbind( HA[ cbind(e[,8], e[,10]) ], FM[ cbind(e[,8], e[,10]) ], GS[ cbind(e[,8], e[,10]) ], C[ cbind(e[,8], e[,10]) ] )
+fi<- rbind( HA[ cbind(e[,7], e[,9]) ], FM[ cbind(e[,7], e[,9]) ], GS[ cbind(e[,7], e[,9]) ], C[ cbind(e[,7], e[,9]) ] )
+z<- c(a[1:4]%*%(fj - fi))
+home.prob<- 1/(1+exp(z)+exp(a[5])*exp(z/2))
+draw.prob<- exp(a[5])/(exp(a[5])+exp(z/2)+exp(-z/2))
+away.prob<- 1/(1+exp(-z)+exp(a[5])*exp(-z/2))
+e[,7]<- home.prob
+e[,8]<- draw.prob
+e[,9]<- away.prob  
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+  
+predic<- matrix(c(home.prob, draw.prob, away.prob), ncol = 3)
+observ<- matrix(c(e[,10], e[,11], e[,12]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+rowSums(matrix(classif, byrow=TRUE, nrow=28))
+sum(classif)
+mean(classif) 
+```
+```{r}
+#dynamic predictions (with all explanatory variables)
+dyn<- matrix(0, ncol=5, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  beta<- c(x[1], x[2], x[3], x[4])
+  fj<- rbind( HA[ cbind(D[,8], D[,10]) ], FM[ cbind(D[,8], D[,10]) ], GS[ cbind(D[,8], D[,10]) ], C[ cbind(D[,8], D[,10]) ] )
+  fi<- rbind( HA[ cbind(D[,7], D[,9]) ], FM[ cbind(D[,7], D[,9]) ], GS[ cbind(D[,7], D[,9]) ], C[ cbind(D[,7], D[,9]) ] )
+  z<- c(beta%*%(fj - fi))
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[5])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[5])/(exp(x[5])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[5])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dyn[k,]<-optim( rep(1,5), log.lik, method = "BFGS")$par
+}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  fj<- rbind( HA[ cbind(e[,8], e[,10]) ], FM[ cbind(e[,8], e[,10]) ], GS[ cbind(e[,8], e[,10]) ], C[ cbind(e[,8], e[,10]) ] )
+  fi<- rbind( HA[ cbind(e[,7], e[,9]) ], FM[ cbind(e[,7], e[,9]) ], GS[ cbind(e[,7], e[,9]) ], C[ cbind(e[,7], e[,9]) ] )
+  z<- c(dyn[j,1:4]%*%(fj - fi))
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,5])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,5])/(exp(dyn[j,5])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,5])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+```
+```{r}
+#dynamic predictions with HA, FM, GS
+dyn<- matrix(0, ncol=4, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  beta<- c(x[1], x[2], x[3])
+  fj<- rbind( FM[ cbind(D[,8], D[,10]) ], C[ cbind(D[,8], D[,10]) ], GS[ cbind(D[,8], D[,10]) ])
+  fi<- rbind( FM[ cbind(D[,7], D[,9]) ], C[ cbind(D[,7], D[,9]) ], GS[ cbind(D[,7], D[,9]) ] )
+  z<- c(beta%*%(fj - fi))
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[4])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[4])/(exp(x[4])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[4])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dyn[k,]<-optim( rep(1,4), log.lik, method = "BFGS")$par
+}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  fj<- rbind( FM[ cbind(e[,8], e[,10]) ], C[ cbind(e[,8], e[,10]) ], GS[ cbind(e[,8], e[,10]) ] )
+  fi<- rbind( FM[ cbind(e[,7], e[,9]) ], C[ cbind(e[,7], e[,9]) ], GS[ cbind(e[,7], e[,9]) ] )
+  z<- c(dyn[j,1:3]%*%(fj - fi))
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,4])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,4])/(exp(dyn[j,4])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,4])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+```
+```{r}
+#dynamic predictions with HA, FM
+dyn<- matrix(0, ncol=3, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  beta<- c(x[1], x[2])
+  fj<- rbind( C[ cbind(D[,8], D[,10]) ], FM[ cbind(D[,8], D[,10]) ])
+  fi<- rbind( C[ cbind(D[,7], D[,9]) ], FM[ cbind(D[,7], D[,9]) ] )
+  z<- c(beta%*%(fj - fi))
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[3])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[3])/(exp(x[3])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[3])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dyn[k,]<-optim( rep(1,3), log.lik, method = "BFGS")$par
+}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  fj<- rbind( C[ cbind(e[,8], e[,10]) ], FM[ cbind(e[,8], e[,10]) ] )
+  fi<- rbind( C[ cbind(e[,7], e[,9]) ], FM[ cbind(e[,7], e[,9]) ])
+  z<- c(dyn[j,1:2]%*%(fj - fi))
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,3])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,3])/(exp(dyn[j,3])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,3])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+```
+```{r}
+#dynamic predictions with HA, GS
+dyn<- matrix(0, ncol=3, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  beta<- c(x[1], x[2])
+  fj<- rbind( HA[ cbind(D[,8], D[,10]) ], GS[ cbind(D[,8], D[,10]) ])
+  fi<- rbind( HA[ cbind(D[,7], D[,9]) ], GS[ cbind(D[,7], D[,9]) ] )
+  z<- c(beta%*%(fj - fi))
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[3])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[3])/(exp(x[3])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[3])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dyn[k,]<-optim( rep(1,3), log.lik, method = "BFGS")$par
+}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  fj<- rbind( HA[ cbind(e[,8], e[,10]) ], GS[ cbind(e[,8], e[,10]) ] )
+  fi<- rbind( HA[ cbind(e[,7], e[,9]) ], GS[ cbind(e[,7], e[,9]) ])
+  z<- c(dyn[j,1:2]%*%(fj - fi))
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,3])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,3])/(exp(dyn[j,3])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,3])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+```
+
+```{r}
+
+#home advantage dynamic model
+TD<- testingdata
+y<- matrix(0, nrow=380, ncol=3)
+for (i in 1:380) {
+  y[i,1]<- ifelse(TD[i,5]>TD[i,6], 1, 0)
+  y[i,2]<- ifelse(TD[i,5]==TD[i,6], 1, 0)
+  y[i,3]<- ifelse(TD[i,6]>TD[i,5], 1, 0)
+}
+dyn<- matrix(0, ncol=22, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  alpha<- x[1:20]
+  l1<- alpha[D[,8]] 
+  l2<- alpha[D[,7]] + x[22]
+  z<- l1 - l2
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dyn[k,]<-optim( rep(1,22), log.lik, method = "BFGS")$par
+}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  z<- dyn[j,][e[,8]] - dyn[j,][e[,7]] - dyn[j,22]
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,21])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,21])/(exp(dyn[j,21])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,21])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classifh<- rep(0,280)
+for (i in 1:280) {
+  classifh[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classifh)
+mean(classifh) 
+rowSums(matrix(classifh, ncol=10, byrow = TRUE))
+mean(rankProbScore(predic, observ))
+sum(y[101:380, 1])/280
+```
+
+
