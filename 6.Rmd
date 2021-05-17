@@ -1,0 +1,262 @@
+---
+title: "teamspecific"
+output: html_document
+---
+
+```{r}
+#home advantage model for 1718 season mle 
+library(dplyr)
+N<- final_dataset[6462:6841,1:6] %>%
+  mutate(V3.2 = case_when(V3=="Arsenal"~1, V3=="Bournemouth"~2, V3=="Brighton" ~3, V3=="Burnley"~4, V3=="Chelsea"~5, V3=="Crystal Palace"~6, V3=="Everton"~7, V3=="Huddersfield"~8, V3=="Liverpool"~9, V3=="Leicester"~10, V3=="Man City"~11, V3=="Man United"~12, V3=="Newcastle"~13, V3=="Southampton"~14, V3=="Stoke"~15, V3=="Swansea"~16, V3=="Tottenham"~17, V3=="Watford"~18, V3=="West Brom"~19, V3=="West Ham"~20), V4.2 = case_when(V4=="Arsenal"~1, V4=="Bournemouth"~2, V4=="Brighton" ~3, V4=="Burnley"~4, V4=="Chelsea"~5, V4=="Crystal Palace"~6, V4=="Everton"~7, V4=="Huddersfield"~8, V4=="Liverpool"~9, V4=="Leicester"~10, V4=="Man City"~11, V4=="Man United"~12, V4=="Newcastle"~13, V4=="Southampton"~14, V4=="Stoke"~15, V4=="Swansea"~16, V4=="Tottenham"~17, V4=="Watford"~18, V4=="West Brom"~19, V4=="West Ham"~20))
+
+y<- matrix(0, nrow=380, ncol=3)
+for (i in 1:380) {
+  y[i,1]<- ifelse(N[i,5]>N[i,6], 1, 0)
+  y[i,2]<- ifelse(N[i,5]==N[i,6], 1, 0)
+  y[i,3]<- ifelse(N[i,6]>N[i,5], 1, 0)
+}
+dyn<- matrix(0, ncol=22, nrow=28)
+for (k in 1:28) {
+  D<- N[1:(90+10*k), ]
+  log.lik<- function(x) {
+  alpha<- x[1:20]
+  l1<- alpha[D[,8]] 
+  l2<- alpha[D[,7]] + x[22]
+  z<- l1 - l2
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(-w)
+}
+
+  dyn[k,]<-optim( rep(1,22), log.lik, method = "BFGS")$par
+}
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- N[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  z<- dyn[j,][e[,8]] - dyn[j,][e[,7]] - dyn[j,22]
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,21])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,21])/(exp(dyn[j,21])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,21])*exp(-z/2))
+}
+e<- N[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classif<- rep(0,280)
+for (i in 1:280) {
+  classif[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classif)
+mean(classif) 
+mean(rankProbScore(predic, observ))
+sum(y[101:380, 1])/280
+```
+
+```{r}
+#MwG home advantage model 17/18
+TD<- N
+y<- matrix(0, nrow=nrow(TD),ncol=3)
+for (i in 1:nrow(TD)) {
+  y[i,1]<- ifelse(TD[i,5]>TD[i,6], 1, 0)
+  y[i,2]<- ifelse(TD[i,5]==TD[i,6], 1, 0)
+  y[i,3]<- ifelse(TD[i,6]>TD[i,5], 1, 0)
+}
+
+MwG2<-function(x0,sigma1, sigma2, sigma3, log.post, n){
+      d<-22
+      chain<-matrix(0,n,d)
+      ac.rate<-rep(0,d)
+      chain[1,]<-x0
+      lik.t<-log.post(chain[1,])
+      for(t in 2:n){
+        chain[t,]<-chain[t-1,]
+        for(k in 1:(d-2)){
+             x.prop<-rnorm(1, chain[t,k],sigma1)
+             chain[t,k]<-x.prop
+             lik.prop<-log.post(chain[t,])
+             if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[k]<-ac.rate[k]+1
+             }else{
+                chain[t,k]<-chain[t-1,k]
+             }
+        }
+        x.prop<- rnorm(1, chain[t,21], sigma2)
+        chain[t,21]<- x.prop
+        lik.prop<- log.post(chain[t,])
+        if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[21]<-ac.rate[21]+1
+             }else{
+                chain[t,21]<-chain[t-1,21]
+             }
+        x.prop<- rnorm(1,chain[t,22], sigma3)
+        chain[t,22]<- x.prop
+        lik.prop<- log.post(chain[t,])
+        if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[22]<-ac.rate[22]+1
+             }else{
+                chain[t,22]<-chain[t-1,22]
+             }
+      }
+     return(list(X=chain, AR=ac.rate/n))
+}
+
+dyn<- matrix(0, ncol=22, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]-x[22]
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(w)
+  }
+  log.prior<-function(x) sum(dnorm(x, log=T))
+  log.post<- function(x) log.prior(x)+log.lik(x)
+  x0<-c(rep(0,22))
+  n<-10000
+  sigma1<-1      
+  sigma2<- 0.3   
+  sigma3<- 0.35
+  sim<-MwG2(x0, sigma1, sigma2, sigma3, log.post, n)
+
+  dyn[k,]<- colMeans(sim$X)
+}
+
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  z<- dyn[j,][e[,8]] - dyn[j,][e[,7]] - dyn[j,22]
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,21])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,21])/(exp(dyn[j,21])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,21])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classifh<- rep(0,280)
+for (i in 1:280) {
+  classifh[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classifh)
+mean(classifh) 
+```
+
+```{r}
+#MwG home advantage model 16/17
+TD<- testingdata[1:380, ]
+y<- matrix(0, nrow=nrow(TD),ncol=3)
+for (i in 1:nrow(TD)) {
+  y[i,1]<- ifelse(TD[i,5]>TD[i,6], 1, 0)
+  y[i,2]<- ifelse(TD[i,5]==TD[i,6], 1, 0)
+  y[i,3]<- ifelse(TD[i,6]>TD[i,5], 1, 0)
+}
+
+MwG2<-function(x0,sigma1, sigma2, sigma3, log.post, n){
+      d<-22
+      chain<-matrix(0,n,d)
+      ac.rate<-rep(0,d)
+      chain[1,]<-x0
+      lik.t<-log.post(chain[1,])
+      for(t in 2:n){
+        chain[t,]<-chain[t-1,]
+        for(k in 1:(d-2)){
+             x.prop<-rnorm(1, chain[t,k],sigma1)
+             chain[t,k]<-x.prop
+             lik.prop<-log.post(chain[t,])
+             if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[k]<-ac.rate[k]+1
+             }else{
+                chain[t,k]<-chain[t-1,k]
+             }
+        }
+        x.prop<- rnorm(1, chain[t,21], sigma2)
+        chain[t,21]<- x.prop
+        lik.prop<- log.post(chain[t,])
+        if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[21]<-ac.rate[21]+1
+             }else{
+                chain[t,21]<-chain[t-1,21]
+             }
+        x.prop<- rnorm(1,chain[t,22], sigma3)
+        chain[t,22]<- x.prop
+        lik.prop<- log.post(chain[t,])
+        if(log(runif(1))<=lik.prop-lik.t){
+                lik.t<-lik.prop
+                ac.rate[22]<-ac.rate[22]+1
+             }else{
+                chain[t,22]<-chain[t-1,22]
+             }
+      }
+     return(list(X=chain, AR=ac.rate/n))
+}
+
+dyn<- matrix(0, ncol=22, nrow=28)
+for (k in 1:28) {
+  D<- TD[1:(90+10*k), ]
+  log.lik<- function(x) {
+  z<- x[D[,8]]-x[D[,7]]-x[22]
+  a<- y[1:(90+10*k),1]*log(1/(1+exp(z)+exp(x[21])*exp(z/2)))
+  b<- y[1:(90+10*k),2]*log(exp(x[21])/(exp(x[21])+exp(z/2)+exp(-z/2)))
+  c<- y[1:(90+10*k),3]*log(1/(1+exp(-z)+exp(x[21])*exp(-z/2)))
+  w<- sum(a)+sum(b)+sum(c)
+  return(w)
+  }
+  log.prior<-function(x) sum(dnorm(x, log=T))
+  log.post<- function(x) log.prior(x)+log.lik(x)
+  x0<-c(rep(0,22))
+  n<-7000
+  sigma1<-1      
+  sigma2<- 0.3   
+  sigma3<- 0.35
+  sim<-MwG2(x0, sigma1, sigma2, sigma3, log.post, n)
+
+  dyn[k,]<- colMeans(sim$X)
+}
+
+predic<- matrix(0, nrow=280, ncol=3) 
+for (j in 1:28) {
+  e<- TD[(91+10*j):(100+10*j),]
+  mw<- matrix(0,ncol=3, nrow=10)
+  z<- dyn[j,][e[,8]] - dyn[j,][e[,7]] - dyn[j,22]
+  predic[(10*j-9):(10*j),1]<- 1/(1+exp(z)+exp(dyn[j,21])*exp(z/2))
+  predic[(10*j-9):(10*j),2]<- exp(dyn[j,21])/(exp(dyn[j,21])+exp(z/2)+exp(-z/2))
+  predic[(10*j-9):(10*j),3]<- 1/(1+exp(-z)+exp(dyn[j,21])*exp(-z/2))
+}
+e<- TD[101:380, ]
+e[,7]<- predic[,1]
+e[,8]<- predic[,2]
+e[,9]<- predic[,3]
+e[,10]<- y[101:380,1]
+e[,11]<- y[101:380,2]
+e[,12]<- y[101:380,3]
+
+observ<- matrix(c(y[101:380,1], y[101:380,2], y[101:380,3]), ncol = 3)
+classifh<- rep(0,280)
+for (i in 1:280) {
+  classifh[i]<- (which(observ[i,]==1)==which.max(predic[i,]))
+}
+sum(classifh)
+mean(classifh) 
+
+```
